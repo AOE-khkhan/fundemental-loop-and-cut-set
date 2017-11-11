@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title></title>
+</head>
+<body>
+	<canvas id="canvas" width="1280" height="720"></canvas>
+	<div id="display-control">
+		<div>
+			<button id="mst-transfer">显示生成树</button>
+		</div>
+		<div>
+			<button id="loop-transfer">显示基本回路</button>
+			<span id="loop-displayer">当前回路/所有回路:</span>	
+		</div>
+		<div>
+			<button id="cutset-transfer">显示基本割集</button>
+			<span id="cutset-displayer">当前割集/所有割集:</span>	
+		</div>
+	</div>
+
+	
+</body>
+	<script type="text/javascript">
+		class EdgePath{
+			constructor(start, destination, color="red"){
+				this.start = start;
+				this.destination = destination;
+				this.color = color;
+			}
+		}
+
+		class Edge{
+			constructor(start,destination,value=0){
+				this.start = start;
+				this.destination = destination;
+				this.value = value;
+				this.relativeEdge = null;
+			}
+		}
+
+		class Vertex{
+			constructor(index, x, y, edges=null){
+				this.index = index;
+				this.x = x;
+				this.y = y;
+				this.edges = (edges === null)?[]:edges;
+			}
+			addEdge(edge){
+				this.edges.push(edge);
+				edge.destination.edges.push(new Edge(edge.destination,edge.start,edge.value));
+			}
+		}
+
+		class UndirectedGraph{
+			constructor(vertices=null){
+				this.vertices = (vertices === null)?[]:vertices;
+				this.edges = [];
+			}
+			addEdge(edge){
+				this.edges.push(edge);
+				let reverseEdge = new Edge(edge.destination,edge.start,edge.value);
+				this.edges.push(reverseEdge);
+
+				edge.start.addEdge(edge);
+			}
+		}
+
+		class GraphTree{
+			constructor(rootVertex){
+				this.rootVertex = rootVertex;
+			}
+		}
+
+		class SpanningTree{
+			constructor(rootVertex,originalGraph){
+				this.rootVertex = rootVertex;
+				this.originalGraph = originalGraph;
+				this.basicLoopPaths = [];
+				this.basicCutSetPaths = [];
+				this.strings = [];
+				this.branches = [];
+			}
+		}
+
+		class GraphDrawer{
+			constructor(canvasID){
+				let canvas = document.getElementById(canvasID);
+				this.ctx = canvas.getContext("2d");
+				this.ctxWidth = canvas.width;
+				this.ctxHeight = canvas.height;
+				this.VERTEX_RADIUS = 1;
+			}
+			drawEdgePath(edgePath){
+				this.ctx.save();
+				this.ctx.beginPath();
+				this.ctx.strokeStyle = edgePath.color;
+				this.ctx.moveTo(edgePath.start.x,this.ctxHeight - edgePath.start.y);
+				this.ctx.lineTo(edgePath.destination.x,this.ctxHeight - edgePath.destination.y);
+				this.ctx.stroke();
+				this.ctx.restore();
+			}
+			drawVertex(vertex){
+				this.ctx.beginPath();
+				this.ctx.moveTo(vertex.x+this.VERTEX_RADIUS,this.ctxHeight-vertex.y);
+				this.ctx.arc(vertex.x,this.ctxHeight-vertex.y,10,0,Math.PI*2,false);
+				this.ctx.fill();
+			}
+			drawEdge(edge){
+				this.ctx.beginPath();
+				this.ctx.moveTo(edge.start.x,this.ctxHeight - edge.start.y);
+				this.ctx.lineTo(edge.destination.x,this.ctxHeight - edge.destination.y);
+				this.ctx.stroke();
+			}
+			drawLoopOrCutSet(loopOrCutset,originalGraph){
+				//this.ctx.clearRect(0,0,this.ctxWidth,this.ctxHeight);
+				for(let edgePath of loopOrCutset){
+					this.drawEdgePath(edgePath);
+				}
+			}
+			drawSpanningTree(spanningTree){
+				let originalGraph = spanningTree.originalGraph;
+
+				this.ctx.clearRect(0,0,this.ctxWidth,this.ctxHeight);
+				// draw vertex
+				for(let vertex of originalGraph.vertices){
+					this.drawVertex(vertex);
+				}
+				
+				for(let edge of spanningTree.branches){
+					this.drawEdge(edge);
+				}
+				
+			}
+			drawGraph(graph){
+				this.ctx.clearRect(0,0,this.ctxWidth,this.ctxHeight);
+				// this.ctx.beginPath();
+				for(let vertex of graph.vertices){
+					// coordinate transfer
+					this.drawVertex(vertex);
+
+					for(let edge of vertex.edges){
+						this.drawEdge(edge);				
+					}
+				}
+			}
+			draw(graph){
+				if(graph instanceof UndirectedGraph){
+					this.drawGraph(graph);
+				}else if(graph instanceof GraphTree || graph instanceof SpanningTree){
+					this.drawSpanningTree(graph);
+				}
+				// switch(kind){
+				// 	case Constants.Drawer.GRAPH:
+				// 		this.drawGraph(graph);
+				// 		break;
+				// 	case Constants.Drawer.TREE:
+				// 		this.drawTree(graph);
+				// 		break;
+				// }
+			}
+		}
+
+		class TransferButtonHandler{
+			constructor(graphDrawer,originalGraph,spanningTree){
+				this.graphDrawer = graphDrawer;
+				this.originalGraph = originalGraph;
+				this.spanningTree = spanningTree;
+				this.loopNum = spanningTree.basicLoopPaths.length;
+				this.cutsetNum = spanningTree.basicCutSetPaths.length;
+				this.loopDisplayCounter = 0;
+				this.cutsetDisplayCounter = 0;
+				this.loopDisplayer = document.getElementById("loop-displayer");
+				this.cutsetDisplayer = document.getElementById("cutset-displayer");
+				this.loopPrevContent = this.loopDisplayer.innerHTML.split(":")[0] + ":";
+				this.cutsetPrevContent = this.cutsetDisplayer.innerHTML.split(":")[0]+":";
+				this.drawingOriginalGraph = true;
+				this.current = null;
+			}
+			enable(){
+				document.getElementById("display-control").addEventListener("click",(event)=>{
+					switch(event.target.id){
+						case "mst-transfer":
+							if(this.drawingOriginalGraph == true){
+								this.graphDrawer.draw(this.spanningTree);
+							}else{
+								this.graphDrawer.draw(this.originalGraph);
+							}
+							this.drawingOriginalGraph = !this.drawingOriginalGraph;
+							break;
+						case "loop-transfer":
+							this.loopDisplayCounter = (this.loopDisplayCounter+1) % (this.loopNum);
+							this.loopDisplayer.innerHTML = this.loopPrevContent + (this.loopDisplayCounter).toString() + "/" + (this.loopNum-1).toString();
+							this.current = this.spanningTree.basicLoopPaths[this.loopDisplayCounter];
+							this.graphDrawer.drawSpanningTree(this.spanningTree);
+							this.graphDrawer.drawLoopOrCutSet(this.current,this.originalGraph);
+							break;
+						case "cutset-transfer":
+							this.cutsetDisplayCounter = (this.cutsetDisplayCounter+1) % (this.cutsetNum)
+							this.cutsetDisplayer.innerHTML = this.cutsetPrevContent + (this.cutsetDisplayCounter).toString() + "/" + (this.cutsetNum-1).toString();
+							this.current = this.spanningTree.basicCutSetPaths[this.cutsetDisplayCounter];
+							this.graphDrawer.drawGraph(this.originalGraph);
+							this.graphDrawer.drawLoopOrCutSet(this.current,this.originalGraph);
+							break;
+					}
+				});
+			}
+		}
+
+		function traverse(vertex,visited,spanningTree){
+			visited[vertex.index] = true;
+			if(vertex.edges.length == 0){
+				return;
+			}
+
+			for(let edge of vertex.edges){
+				if(visited[edge.destination.index] == false){
+					spanningTree.branches.push(edge);
+					edge.destination.parent = vertex;
+					traverse(edge.destination,visited,spanningTree);
+				}
+			}
+		}
+
+		function generateSpanningTree(graph){
+			let choice = graph.vertices[Math.floor((Math.random()*graph.vertices.length))];
+			choice = graph.vertices[0];
+			let spanningTree = new SpanningTree(choice,graph);
+			choice.parent = null;
+			let visited = [];
+			for(let i=0,verticesLength = graph.vertices.length;i<verticesLength;i++){
+				visited[i] = false;
+			}
+			traverse(choice,visited,spanningTree);
+
+			return spanningTree;
+		}
+
+		function findPathBetweenVertex(lhs,rhs){
+			let leftPath = [];
+			let lhsCurrent = lhs;
+			let rhsCurrent = rhs;
+			let rightPath;
+			while(lhsCurrent != null){
+				rightPath = [];
+				rhsCurrent = rhs;
+
+				while(rhsCurrent != null){
+					if(lhsCurrent.parent == rhsCurrent.parent){
+						console.log(lhs,rhs,leftPath, rightPath);
+						return [...leftPath,...rightPath];
+					}
+					if(rhsCurrent.parent != null){
+						rightPath.push(new EdgePath(rhsCurrent,rhsCurrent.parent));
+					}
+					rhsCurrent = rhsCurrent.parent;
+				}
+				if(lhsCurrent.parent != null){
+					leftPath.push(new EdgePath(lhsCurrent,lhsCurrent.parent));	
+				}
+				lhsCurrent = lhsCurrent.parent;
+			}
+
+			// both are null
+			if(lhsCurrent == rhsCurrent){
+				return [...leftPath,...rightPath];
+			}
+		}
+
+
+		function isInDifferentTree(lhsVertex, rhsVertex, branch){
+			let leftSide = branch.start;
+			let rightSide = branch.destination;
+			let lhsCurrent = lhsVertex;
+			let rhsCurrent = rhsVertex;
+			while(lhsCurrent != leftSide && lhsCurrent != rightSide && lhsCurrent != null){
+				lhsCurrent = lhsCurrent.parent;
+			}
+			while(rhsCurrent != leftSide && rhsCurrent != rightSide && rhsCurrent != null){
+				rhsCurrent = rhsCurrent.parent;
+			}
+
+			// if lhsVertex == rhsVertex, means that they have a same parent, same tree
+			return !(lhsCurrent == rhsCurrent);
+		}
+
+
+		function isSameEdge(edge,branch){
+			if((edge.start == branch.start && edge.destination == branch.destination) ||
+				(edge.start == branch.destination && edge.destination == branch.start)){
+				return true;
+			}
+			return false;
+		}
+
+		function calculateBasicLoops(spanningTree){
+			let temp = [];
+			for(let edge of spanningTree.originalGraph.edges){
+				let same = false;
+				for(let branch of spanningTree.branches){
+					if(isSameEdge(edge,branch)){
+						same = true;
+						break;
+					}
+				}
+				if(!same){
+					temp.push(edge);
+				}
+			}
+
+			let stringsLength = temp.length / 2;
+
+			let res = [];
+			for(let i of temp){
+				let resHas = false;
+				for(let j of res){
+					if(isSameEdge(i,j)){
+						resHas = true;
+						break;
+					}
+				}
+				if(!resHas){
+					res.push(i);
+				}
+			}
+			
+			spanningTree.strings = res;
+
+			for(let string of spanningTree.strings){
+				let start = string.start;
+				let destination = string.destination;
+				let path = findPathBetweenVertex(start,destination);
+				path.push(new EdgePath(start,destination));
+				spanningTree.basicLoopPaths.push(path);
+			}
+		}
+
+		function calculateCutSets(spanningTree){
+			for(let branch of spanningTree.branches){
+				let path = [];
+				for(let edge of spanningTree.originalGraph.edges){
+					if(!isSameEdge(branch,edge)){
+						if(isInDifferentTree(edge.start,edge.destination,branch)){
+							path.push(new EdgePath(edge.start,edge.destination));
+						}
+					}
+				}
+				spanningTree.basicCutSetPaths.push(path);
+			}
+		}
+
+		function initialize(){
+			let graph = new UndirectedGraph();
+			let vertices = [];
+			let graphDrawer = new GraphDrawer("canvas");
+			
+			for(let i=0;i<6;i++){
+				vertices.push(new Vertex(i,Math.floor(Math.random() * graphDrawer.ctxWidth),
+				 Math.floor(Math.random() * graphDrawer.ctxHeight)));
+			}
+
+			graph.addEdge(new Edge(vertices[0],vertices[1]));//1 2
+			graph.addEdge(new Edge(vertices[0],vertices[3]));//1 4
+			graph.addEdge(new Edge(vertices[0],vertices[4]));//1 5
+			graph.addEdge(new Edge(vertices[1],vertices[2]));//2 3
+			graph.addEdge(new Edge(vertices[1],vertices[4]));//2 5
+			graph.addEdge(new Edge(vertices[2],vertices[3]));//3 4
+			graph.addEdge(new Edge(vertices[2],vertices[5]));//3 6
+			graph.addEdge(new Edge(vertices[3],vertices[5]));//4 6
+			graph.addEdge(new Edge(vertices[4],vertices[5]));//5 6
+			graph.vertices = vertices;
+
+			
+
+			let spanningTree = generateSpanningTree(graph);
+			calculateBasicLoops(spanningTree);
+			calculateCutSets(spanningTree);
+
+			graphDrawer.draw(graph);
+
+			let transferHandler = new TransferButtonHandler(graphDrawer,graph,spanningTree);
+			transferHandler.enable();
+		}
+		initialize();
+	</script>
+</html>
