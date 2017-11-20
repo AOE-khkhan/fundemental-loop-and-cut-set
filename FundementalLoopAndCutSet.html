@@ -35,7 +35,6 @@
 				this.start = start;
 				this.destination = destination;
 				this.value = value;
-				this.relativeEdge = null;
 			}
 		}
 
@@ -48,7 +47,6 @@
 			}
 			addEdge(edge){
 				this.edges.push(edge);
-				edge.destination.edges.push(new Edge(edge.destination,edge.start,edge.value));
 			}
 		}
 
@@ -59,10 +57,8 @@
 			}
 			addEdge(edge){
 				this.edges.push(edge);
-				let reverseEdge = new Edge(edge.destination,edge.start,edge.value);
-				this.edges.push(reverseEdge);
-
 				edge.start.addEdge(edge);
+				edge.destination.addEdge(edge);
 			}
 		}
 
@@ -218,6 +214,10 @@
 					spanningTree.branches.push(edge);
 					edge.destination.parent = vertex;
 					traverse(edge.destination,visited,spanningTree);
+				}else if(visited[edge.start.index] == false){
+					spanningTree.branches.push(edge);
+					edge.start.parent = vertex;
+					traverse(edge.start,visited,spanningTree);
 				}
 			}
 		}
@@ -247,7 +247,6 @@
 
 				while(rhsCurrent != null){
 					if(lhsCurrent.parent == rhsCurrent.parent){
-						console.log(lhs,rhs,leftPath, rightPath);
 						return [...leftPath,...rightPath];
 					}
 					if(rhsCurrent.parent != null){
@@ -294,37 +293,11 @@
 		}
 
 		function calculateBasicLoops(spanningTree){
-			let temp = [];
 			for(let edge of spanningTree.originalGraph.edges){
-				let same = false;
-				for(let branch of spanningTree.branches){
-					if(isSameEdge(edge,branch)){
-						same = true;
-						break;
-					}
-				}
-				if(!same){
-					temp.push(edge);
+				if(!spanningTree.branches.find((x)=> x == edge)){
+					spanningTree.strings.push(edge);
 				}
 			}
-
-			let stringsLength = temp.length / 2;
-
-			let res = [];
-			for(let i of temp){
-				let resHas = false;
-				for(let j of res){
-					if(isSameEdge(i,j)){
-						resHas = true;
-						break;
-					}
-				}
-				if(!resHas){
-					res.push(i);
-				}
-			}
-			
-			spanningTree.strings = res;
 
 			for(let string of spanningTree.strings){
 				let start = string.start;
@@ -339,10 +312,8 @@
 			for(let branch of spanningTree.branches){
 				let path = [];
 				for(let edge of spanningTree.originalGraph.edges){
-					if(!isSameEdge(branch,edge)){
-						if(isInDifferentTree(edge.start,edge.destination,branch)){
-							path.push(new EdgePath(edge.start,edge.destination));
-						}
+					if(!isSameEdge(branch,edge) && isInDifferentTree(edge.start,edge.destination,branch)){
+						path.push(new EdgePath(edge.start,edge.destination));	
 					}
 				}
 				spanningTree.basicCutSetPaths.push(path);
